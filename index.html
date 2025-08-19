@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catch the Falling Stars</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling */
+            font-family: 'Inter', sans-serif; /* Using Inter as per instructions */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #2c3e50; /* Dark background */
+            color: #ecf0f1; /* Light text */
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            max-width: 600px; /* Max width for desktop */
+            background-color: #34495e; /* Slightly lighter background for game area */
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+            overflow: hidden; /* Keep game elements within bounds */
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        canvas {
+            background-color: #2c3e50;
+            display: block;
+            border-radius: 10px;
+            border: 2px solid #3498db; /* Blue border */
+            touch-action: none; /* Prevent browser touch actions like scrolling/zooming */
+            width: 100%; /* Make canvas responsive */
+            height: auto; /* Adjust height proportionally */
+            aspect-ratio: 1 / 1; /* Maintain a 1:1 aspect ratio, adjust as needed */
+        }
+
+        #game-info {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-top: 15px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #ecf0f1;
+        }
+
+        #controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        button {
+            background-color: #2ecc71; /* Green for start/restart */
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1.1em;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            flex-grow: 1;
+            max-width: 180px;
+        }
+
+        button:hover {
+            background-color: #27ae60;
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        button#start-button.hidden,
+        button#restart-button.hidden {
+            display: none;
+        }
+
+        #game-over-message {
+            position: absolute; /* Position over the canvas */
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(44, 62, 80, 0.9);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 2em;
+            color: #e74c3c; /* Red for game over */
+            font-weight: bold;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+            display: none; /* Hidden by default */
+            z-index: 10;
+        }
+
+        #game-over-message p {
+            margin: 10px 0;
+        }
+
+        #game-over-message button {
+            background-color: #e74c3c; /* Red for game over button */
+            margin-top: 20px;
+        }
+        #game-over-message button:hover {
+            background-color: #c0392b;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 480px) {
+            #game-container {
+                padding: 15px;
+            }
+            #game-info {
+                font-size: 1em;
+            }
+            button {
+                padding: 10px 20px;
+                font-size: 1em;
+            }
+            #game-over-message {
+                font-size: 1.5em;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="game-info">
+            <span id="score">Score: 0</span>
+            <span id="lives">Lives: 3</span>
+        </div>
+        <div id="controls">
+            <button id="start-button">Start Game</button>
+            <button id="restart-button" class="hidden">Restart Game</button>
+        </div>
+        <div id="game-over-message">
+            <p>Game Over!</p>
+            <p id="final-score"></p>
+            <button id="play-again-button">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const livesDisplay = document.getElementById('lives');
+        const startButton = document.getElementById('start-button');
+        const restartButton = document.getElementById('restart-button');
+        const gameOverMessage = document.getElementById('game-over-message');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const playAgainButton = document.getElementById('play-again-button');
+
+        let gameRunning = false;
+        let score = 0;
+        let lives = 3;
+
+        // Player properties (the basket)
+        const player = {
+            width: 80,
+            height: 20,
+            x: 0, // Initialized later based on canvas width
+            y: 0, // Initialized later based on canvas height
+            speed: 5
+        };
+
+        // Falling item properties (the stars)
+        let fallingItems = [];
+        const itemSize = 20;
+        const itemSpeedMin = 2;
+        const itemSpeedMax = 5;
+        const itemSpawnInterval = 1000; // milliseconds
+        let lastItemSpawnTime = 0;
+        let animationFrameId; // To store the requestAnimationFrame ID
+
+        // --- Utility Functions ---
+
+        // Function to convert base64 audio to WAV blob
+        // (This function would be used if TTS was integrated, keeping it as an example)
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function pcmToWav(pcmData, sampleRate) {
+            const numChannels = 1; // Mono audio
+            const bitDepth = 16;   // PCM 16-bit
+            const bytesPerSample = bitDepth / 8;
+            const blockAlign = numChannels * bytesPerSample;
+            const byteRate = sampleRate * blockAlign;
+
+            const wavHeader = new ArrayBuffer(44);
+            const view = new DataView(wavHeader);
+
+            // RIFF chunk
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + pcmData.byteLength, true); // ChunkSize
+            writeString(view, 8, 'WAVE');
+
+            // FMT sub-chunk
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
+            view.setUint16(20, 1, true);  // AudioFormat (1 for PCM)
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, byteRate, true);
+            view.setUint16(32, blockAlign, true);
+            view.setUint16(34, bitDepth, true);
+
+            // DATA sub-chunk
+            writeString(view, 36, 'data');
+            view.setUint32(40, pcmData.byteLength, true); // Subchunk2Size
+
+            const wavBlob = new Blob([wavHeader, pcmData], { type: 'audio/wav' });
+            return wavBlob;
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        // --- Game Initialization & Setup ---
+
+        // Function to set canvas dimensions responsively
+        function setCanvasDimensions() {
+            // Get the parent container's width, subtracting padding
+            const containerWidth = canvas.parentElement.offsetWidth - (parseInt(getComputedStyle(canvas.parentElement).paddingLeft) * 2);
+            canvas.width = containerWidth;
+            canvas.height = containerWidth; // Keep aspect ratio 1:1
+
+            // Adjust player initial position based on new canvas size
+            player.x = (canvas.width - player.width) / 2;
+            player.y = canvas.height - player.height - 10; // 10px from bottom
+        }
+
+        // Initialize canvas dimensions on load and resize
+        window.addEventListener('load', () => {
+            setCanvasDimensions();
+            draw(); // Draw initial state
+        });
+        window.addEventListener('resize', setCanvasDimensions);
+
+
+        // --- Drawing Functions ---
+
+        function drawPlayer() {
+            ctx.fillStyle = '#3498db'; /* Blue for player */
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.strokeStyle = '#2980b9'; /* Darker blue border */
+            ctx.lineWidth = 2;
+            ctx.strokeRect(player.x, player.y, player.width, player.height);
+        }
+
+        function drawFallingItem(item) {
+            // Draw a star shape for the falling items
+            ctx.fillStyle = '#f1c40f'; /* Yellow for stars */
+            ctx.beginPath();
+            ctx.moveTo(item.x + itemSize * 0.5, item.y);
+            ctx.lineTo(item.x + itemSize * 0.618, item.y + itemSize * 0.382);
+            ctx.lineTo(item.x + itemSize, item.y + itemSize * 0.382);
+            ctx.lineTo(item.x + itemSize * 0.691, item.y + itemSize * 0.618);
+            ctx.lineTo(item.x + itemSize * 0.809, item.y + itemSize);
+            ctx.lineTo(item.x + itemSize * 0.5, item.y + itemSize * 0.763);
+            ctx.lineTo(item.x + itemSize * 0.191, item.y + itemSize);
+            ctx.lineTo(item.x + itemSize * 0.309, item.y + itemSize * 0.618);
+            ctx.lineTo(item.x, item.y + itemSize * 0.382);
+            ctx.lineTo(item.x + itemSize * 0.382, item.y + itemSize * 0.382);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = '#f39c12'; /* Orange border */
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+
+            drawPlayer();
+            fallingItems.forEach(drawFallingItem);
+
+            // Update score and lives display
+            scoreDisplay.textContent = `Score: ${score}`;
+            livesDisplay.textContent = `Lives: ${lives}`;
+        }
+
+        // --- Game Logic Functions ---
+
+        function update() {
+            if (!gameRunning) return;
+
+            // Update falling items
+            for (let i = 0; i < fallingItems.length; i++) {
+                const item = fallingItems[i];
+                item.y += item.speed;
+
+                // Collision detection: Check if item is caught by player
+                if (item.y + itemSize > player.y &&
+                    item.y < player.y + player.height &&
+                    item.x + itemSize > player.x &&
+                    item.x < player.x + player.width) {
+                    score += 10; // Increase score
+                    fallingItems.splice(i, 1); // Remove caught item
+                    i--; // Adjust index after removal
+                }
+                // Check if item is missed (falls off screen)
+                else if (item.y > canvas.height) {
+                    lives--; // Lose a life
+                    fallingItems.splice(i, 1); // Remove missed item
+                    i--; // Adjust index after removal
+
+                    if (lives <= 0) {
+                        endGame();
+                    }
+                }
+            }
+
+            // Spawn new falling items
+            const currentTime = performance.now();
+            if (currentTime - lastItemSpawnTime > itemSpawnInterval) {
+                spawnFallingItem();
+                lastItemSpawnTime = currentTime;
+            }
+
+            draw(); // Redraw everything
+            animationFrameId = requestAnimationFrame(update); // Continue the game loop
+        }
+
+        function spawnFallingItem() {
+            const x = Math.random() * (canvas.width - itemSize);
+            const speed = Math.random() * (itemSpeedMax - itemSpeedMin) + itemSpeedMin;
+            fallingItems.push({ x: x, y: -itemSize, speed: speed });
+        }
+
+        function startGame() {
+            score = 0;
+            lives = 3;
+            fallingItems = [];
+            gameRunning = true;
+            gameOverMessage.style.display = 'none';
+            startButton.classList.add('hidden');
+            restartButton.classList.remove('hidden');
+
+            setCanvasDimensions(); // Ensure dimensions are set correctly before starting
+
+            lastItemSpawnTime = performance.now(); // Reset spawn timer
+            animationFrameId = requestAnimationFrame(update); // Start the game loop
+        }
+
+        function endGame() {
+            gameRunning = false;
+            cancelAnimationFrame(animationFrameId); // Stop the game loop
+            finalScoreDisplay.textContent = `Your Score: ${score}`;
+            gameOverMessage.style.display = 'flex'; // Show game over message
+            restartButton.classList.add('hidden'); // Hide restart button
+        }
+
+        function resetGame() {
+            gameOverMessage.style.display = 'none';
+            startGame();
+        }
+
+        // --- Event Listeners for Player Control ---
+
+        // Mouse move for desktop
+        canvas.addEventListener('mousemove', (e) => {
+            if (gameRunning) {
+                const rect = canvas.getBoundingClientRect();
+                // Calculate mouse X relative to canvas, scaling for CSS width
+                const scaleX = canvas.width / rect.width;
+                const mouseX = (e.clientX - rect.left) * scaleX;
+
+                // Keep player within canvas bounds
+                player.x = Math.max(0, Math.min(mouseX - player.width / 2, canvas.width - player.width));
+            }
+        });
+
+        // Touch events for mobile
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // Prevent scrolling
+            if (gameRunning && e.touches.length > 0) {
+                const rect = canvas.getBoundingClientRect();
+                // Calculate touch X relative to canvas, scaling for CSS width
+                const scaleX = canvas.width / rect.width;
+                const touchX = (e.touches[0].clientX - rect.left) * scaleX;
+
+                // Keep player within canvas bounds
+                player.x = Math.max(0, Math.min(touchX - player.width / 2, canvas.width - player.width));
+            }
+        }, { passive: false }); // Use passive: false to allow preventDefault
+
+        // --- Button Event Listeners ---
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', startGame); // Restart button just calls startGame
+        playAgainButton.addEventListener('click', resetGame);
+
+        // Initial draw when the page loads, before the game starts
+        window.onload = () => {
+            setCanvasDimensions();
+            draw();
+        };
+
+    </script>
+</body>
+</html>
